@@ -20,10 +20,10 @@ Quick start::
     user = await user.save(session)
     users = await User.get(session, fetch_mode="all")
 """
-__version__ = "0.1.2"
+__version__ = "0.2.0"
 
 # Base
-from sqlmodel_ext.base import SQLModelBase
+from sqlmodel_ext.base import SQLModelBase, ExtraIgnoreModelBase
 
 # Exceptions
 from sqlmodel_ext._exceptions import RecordNotFoundError
@@ -39,8 +39,11 @@ from sqlmodel_ext.pagination import (
 # Mixins
 from sqlmodel_ext.mixins import (
     # Table
+    SESSION_FOR_UPDATE_KEY,
     TableBaseMixin,
     UUIDTableBaseMixin,
+    rel,
+    cond,
     # Polymorphic
     PolymorphicBaseMixin,
     AutoPolymorphicIdentityMixin,
@@ -53,6 +56,9 @@ from sqlmodel_ext.mixins import (
     # Relation Preload
     RelationPreloadMixin,
     requires_relations,
+    requires_for_update,
+    # Cached Table
+    CachedTableBaseMixin,
     # Info Response DTOs
     IntIdInfoMixin,
     UUIDIdInfoMixin,
@@ -76,11 +82,13 @@ from sqlmodel_ext.field_types import (
     Str128,
     Str255,
     Str256,
+    Str512,
     Text1K,
     Text1024,
     Text2K,
     Text2500,
     Text3K,
+    Text5K,
     Text10K,
     Text60K,
     Text64K,
@@ -90,6 +98,8 @@ from sqlmodel_ext.field_types import (
     Percentage,
     PositiveInt,
     NonNegativeInt,
+    PositiveBigInt,
+    NonNegativeBigInt,
     PositiveFloat,
     # Custom types
     IPAddress,

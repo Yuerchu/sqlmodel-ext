@@ -97,7 +97,8 @@ def _resolve_annotations(attrs: dict[str, Any]) -> tuple[
 
     try:
         temp_cls = type('AnnotationProxy', (object,), dict(attrs))
-        temp_cls.__module__ = module_name
+        if isinstance(module_name, str):
+            temp_cls.__module__ = module_name
         extras_kw = {'include_extras': True} if sys.version_info >= (3, 10) else {}
         evaluated = get_type_hints(
             temp_cls,
@@ -132,6 +133,6 @@ def _evaluate_annotation_from_string(
         return current_type
 
     try:
-        return eval(expr, globalns, localns)
+        return eval(expr, dict(globalns), dict(localns))
     except (NameError, SyntaxError, AttributeError, TypeError):
         return current_type

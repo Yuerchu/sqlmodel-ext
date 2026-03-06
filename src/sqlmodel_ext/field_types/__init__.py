@@ -7,6 +7,7 @@ all compatible with Pydantic validation and SQLAlchemy column mapping.
 from pathlib import Path
 from typing import Annotated, TypeAlias
 
+from sqlalchemy import BigInteger
 from sqlmodel import Field
 
 from ._internal.path import _DirectoryPathHandler, _FilePathHandler
@@ -70,6 +71,9 @@ Str255: TypeAlias = Annotated[str, Field(max_length=255)]
 Str256: TypeAlias = Annotated[str, Field(max_length=256)]
 """256-character string field"""
 
+Str512: TypeAlias = Annotated[str, Field(max_length=512)]
+"""512-character string field"""
+
 Text1K: TypeAlias = Annotated[str, Field(max_length=1000)]
 """1000-character text field"""
 
@@ -84,6 +88,9 @@ Text2500: TypeAlias = Annotated[str, Field(max_length=2500)]
 
 Text3K: TypeAlias = Annotated[str, Field(max_length=3000)]
 """3000-character text field"""
+
+Text5K: TypeAlias = Annotated[str, Field(max_length=5000)]
+"""5000-character text field"""
 
 Text10K: TypeAlias = Annotated[str, Field(max_length=10000)]
 """10000-character text field"""
@@ -109,6 +116,12 @@ PositiveInt: TypeAlias = Annotated[int, Field(ge=1)]
 
 NonNegativeInt: TypeAlias = Annotated[int, Field(ge=0)]
 """Non-negative integer (>=0)"""
+
+PositiveBigInt: TypeAlias = Annotated[int, Field(ge=1, sa_type=BigInteger)]
+"""Positive big integer (>=1, BigInteger storage)"""
+
+NonNegativeBigInt: TypeAlias = Annotated[int, Field(ge=0, sa_type=BigInteger)]
+"""Non-negative big integer (>=0, BigInteger storage)"""
 
 PositiveFloat: TypeAlias = Annotated[float, Field(gt=0.0)]
 """Positive float (>0)"""

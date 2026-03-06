@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sqlmodel-ext"
-version = "0.1.2"
+version = "0.2.0"
 description = "Extended SQLModel infrastructure: smart metaclass, async CRUD mixins, polymorphic inheritance, optimistic locking, relation preloading, and reusable field types."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 authors = [
-    { name = "Foxline AI" },
+    { name = "Foxerine" },
 ]
 keywords = ["sqlmodel", "sqlalchemy", "pydantic", "async", "crud", "orm", "polymorphic"]
 classifiers = [

@@ -22,24 +22,30 @@ Usage::
         @requires_relations('generator', Generator.config)
         async def cost(self, params, context, session) -> int:
             return self.generator.config.price  # auto-loaded
+
+Supports AsyncGenerator::
+
+    @requires_relations('twitter_api')
+    async def _call(self, ...) -> AsyncGenerator[ToolResponse, None]:
+        yield ToolResponse(...)  # decorator handles async generators correctly
 """
 import inspect as python_inspect
 import logging
+from collections.abc import AsyncGenerator, Callable
 from functools import wraps
-from typing import Callable, TypeVar, ParamSpec, Any
+from typing import Any
 
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm import QueryableAttribute
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlmodel.main import RelationshipInfo
+
+from .table import SESSION_FOR_UPDATE_KEY
 
 logger = logging.getLogger(__name__)
 
-P = ParamSpec('P')
-R = TypeVar('R')
-
 
 def _extract_session(
-    func: Callable,
+    func: Callable[..., Any],
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
 ) -> AsyncSession | None:
@@ -109,13 +115,15 @@ def _find_relation_to_class(from_class: type, to_class: type) -> str | None:
     return None
 
 
-def requires_relations(*relations: str | RelationshipInfo) -> Callable[[Callable[P, R]], Callable[P, R]]:
+def requires_relations(
+    *relations: str | QueryableAttribute[Any],
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator declaring method's required relationships with auto-loading.
 
     Parameter formats:
     - String: attribute name on this class (e.g. ``'generator'``)
-    - RelationshipInfo: external class attribute (e.g. ``Generator.config``)
+    - QueryableAttribute: external class attribute (e.g. ``Generator.config``)
 
     Behavior:
     - Checks if relationships are loaded before method execution
@@ -130,29 +138,68 @@ def requires_relations(*relations: str | RelationshipInfo) -> Callable[[Callable
         async def cost(self, params, context, session) -> int:
             return self.generator.config.price
     """
-    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         is_async_gen = python_inspect.isasyncgenfunction(func)
 
         if is_async_gen:
             @wraps(func)
-            async def wrapper(self, *args: P.args, **kwargs: P.kwargs) -> R:
+            async def gen_wrapper(self: Any, *args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
                 session = _extract_session(func, args, kwargs)
                 if session is not None:
                     await self._ensure_relations_loaded(session, relations)
                 async for item in func(self, *args, **kwargs):
-                    yield item  # type: ignore
+                    yield item
+            setattr(gen_wrapper, '_required_relations', relations)
+            return gen_wrapper  # type: ignore[return-value]
         else:
             @wraps(func)
-            async def wrapper(self, *args: P.args, **kwargs: P.kwargs) -> R:
+            async def func_wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
                 session = _extract_session(func, args, kwargs)
                 if session is not None:
                     await self._ensure_relations_loaded(session, relations)
                 return await func(self, *args, **kwargs)
-
-        wrapper._required_relations = relations  # type: ignore
-        return wrapper
+            setattr(func_wrapper, '_required_relations', relations)
+            return func_wrapper
 
     return decorator
+
+
+def requires_for_update(func: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    Decorator declaring that self must be obtained via FOR UPDATE.
+
+    At runtime, checks ``session.info`` for lock records before method execution.
+    If self was not obtained via ``Model.get(with_for_update=True)``,
+    raises RuntimeError immediately.
+
+    Static analysis: sets ``_requires_for_update = True`` metadata on the wrapper,
+    enabling lint tools (e.g. relation_load_checker) to verify locking at call sites.
+
+    Example::
+
+        @requires_for_update
+        async def adjust_balance(self, session: AsyncSession, *, amount: int) -> None:
+            ...
+
+        # Caller must lock first
+        user = await User.get(session, User.id == uid, with_for_update=True)
+        await user.adjust_balance(session, amount=-100)
+    """
+    @wraps(func)
+    async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        session = _extract_session(func, args, kwargs)
+        if session is not None:
+            locked: set[int] = session.info.get(SESSION_FOR_UPDATE_KEY, set())
+            if id(self) not in locked:
+                cls_name = type(self).__name__
+                raise RuntimeError(
+                    f"{cls_name}.{func.__name__}() requires a FOR UPDATE locked instance. "
+                    f"Call {cls_name}.get(session, ..., with_for_update=True) first."
+                )
+        return await func(self, *args, **kwargs)
+
+    setattr(wrapper, '_requires_for_update', True)
+    return wrapper
 
 
 class RelationPreloadMixin:
@@ -169,7 +216,7 @@ class RelationPreloadMixin:
     - Commit-safe: Uses SQLAlchemy inspect for real state detection
     """
 
-    def __init_subclass__(cls, **kwargs) -> None:
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         """Validate all @requires_relations declarations at class creation time."""
         super().__init_subclass__(**kwargs)
 
@@ -216,6 +263,8 @@ class RelationPreloadMixin:
         """
         try:
             state = sa_inspect(self)
+            if state is None:
+                return False
             return rel_name not in state.unloaded
         except Exception:
             return False
@@ -223,7 +272,7 @@ class RelationPreloadMixin:
     async def _ensure_relations_loaded(
         self,
         session: AsyncSession,
-        relations: tuple[str | RelationshipInfo, ...],
+        relations: tuple[str | QueryableAttribute[Any], ...],
     ) -> None:
         """
         Ensure specified relationships are loaded, incrementally loading missing ones.
@@ -231,7 +280,7 @@ class RelationPreloadMixin:
         :param session: Database session
         :param relations: Required relationship specs
         """
-        to_load: list[str | RelationshipInfo] = []
+        to_load: list[str | QueryableAttribute[Any]] = []
         direct_keys: set[str] = set()
         nested_parent_keys: set[str] = set()
 
@@ -241,7 +290,7 @@ class RelationPreloadMixin:
                     to_load.append(rel)
                     direct_keys.add(rel)
             else:
-                parent_class = rel.parent.class_
+                parent_class: type = rel.property.parent.class_
                 parent_attr = _find_relation_to_class(self.__class__, parent_class)
 
                 if parent_attr is None:
@@ -273,20 +322,21 @@ class RelationPreloadMixin:
             return
 
         state = sa_inspect(self)
-        pk_tuple = state.key[1] if state.key else None
-        if pk_tuple is None:
+        if state is None or state.key is None:
             logger.warning(f"Cannot get primary key for {self.__class__.__name__}")
             return
+        pk_tuple = state.key[1]
         pk_value = pk_tuple[0]
 
-        fresh = await self.__class__.get(
+        cls: Any = self.__class__
+        fresh = await cls.get(
             session,
-            self.__class__.id == pk_value,
+            cls.id == pk_value,
             load=load_options,
         )
 
         if fresh is None:
-            logger.warning(f"Cannot load relations: {self.__class__.__name__} id={self.id} not found")
+            logger.warning(f"Cannot load relations: {self.__class__.__name__} id={pk_value} not found")
             return
 
         all_direct_keys = direct_keys | nested_parent_keys
@@ -296,15 +346,15 @@ class RelationPreloadMixin:
 
     def _specs_to_load_options(
         self,
-        specs: list[str | RelationshipInfo],
-    ) -> list[RelationshipInfo]:
+        specs: list[str | QueryableAttribute[Any]],
+    ) -> list[QueryableAttribute[Any]]:
         """
         Convert relationship specs to load parameters.
 
         - String -> ``cls.{name}``
-        - RelationshipInfo -> used directly
+        - QueryableAttribute -> used directly
         """
-        result: list[RelationshipInfo] = []
+        result: list[QueryableAttribute[Any]] = []
 
         for spec in specs:
             if isinstance(spec, str):
@@ -321,18 +371,18 @@ class RelationPreloadMixin:
     # ==================== Optional manual preload API ====================
 
     @classmethod
-    def get_relations_for_method(cls, method_name: str) -> list[RelationshipInfo]:
+    def get_relations_for_method(cls, method_name: str) -> list[QueryableAttribute[Any]]:
         """
         Get relationships declared by a specific method.
 
         :param method_name: Method name
-        :returns: List of RelationshipInfo
+        :returns: List of QueryableAttribute
         """
         method = getattr(cls, method_name, None)
         if method is None or not hasattr(method, '_required_relations'):
             return []
 
-        result: list[RelationshipInfo] = []
+        result: list[QueryableAttribute[Any]] = []
         for spec in method._required_relations:
             if isinstance(spec, str):
                 rel = getattr(cls, spec, None)
@@ -344,15 +394,15 @@ class RelationPreloadMixin:
         return result
 
     @classmethod
-    def get_relations_for_methods(cls, *method_names: str) -> list[RelationshipInfo]:
+    def get_relations_for_methods(cls, *method_names: str) -> list[QueryableAttribute[Any]]:
         """
         Get deduplicated relationships for multiple methods.
 
         :param method_names: Method names
-        :returns: Deduplicated list of RelationshipInfo
+        :returns: Deduplicated list of QueryableAttribute
         """
         seen: set[str] = set()
-        result: list[RelationshipInfo] = []
+        result: list[QueryableAttribute[Any]] = []
 
         for method_name in method_names:
             for rel in cls.get_relations_for_method(method_name):
@@ -373,7 +423,7 @@ class RelationPreloadMixin:
         :param method_names: Method names whose relationships to preload
         :returns: self (supports chaining)
         """
-        all_relations: list[str | RelationshipInfo] = []
+        all_relations: list[str | QueryableAttribute[Any]] = []
 
         for method_name in method_names:
             method = getattr(self.__class__, method_name, None)

@@ -413,6 +413,15 @@ class AutoPolymorphicIdentityMixin:
                 column = get_column_from_field(field_info)
                 column.name = field_name
                 column.key = field_name
+                # STI columns are shared across subclasses: same-named columns may use
+                # different StrEnum types (e.g. aspect_ratio used by different vendors
+                # with vendor-specific enums). Native PostgreSQL ENUM would cause type
+                # conflicts. Use String instead and let Pydantic handle validation.
+                if isinstance(column.type, SAEnum):
+                    column.type = String()
+                # STI subclass fields must be nullable at the database level because
+                # other subclasses' rows won't have values for these columns.
+                # Pydantic-level constraints still apply when creating specific subclasses.
                 column.nullable = True
                 parent_table.append_column(column)
             except Exception as e:

@@ -9,12 +9,13 @@ Provides a smart metaclass that handles:
 - Annotated sa_type extraction and injection
 - Python 3.14 (PEP 649) compatibility
 """
+import logging
 import re
 import sys
 import typing
 from typing import Any, get_args, get_origin
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined as Undefined
 from sqlalchemy import inspect as sa_inspect
@@ -36,6 +37,8 @@ if sys.version_info >= (3, 14):
     import annotationlib  # noqa: F401
 else:
     annotationlib = None
+
+logger = logging.getLogger(__name__)
 
 
 def _make_sti_fk_resolver(
@@ -114,6 +117,13 @@ class __DeclarativeMeta(SQLModelMetaclass):
         is_intended_as_table = any(getattr(b, '_has_table_mixin', False) for b in bases)
         if is_intended_as_table and 'table' not in kwargs:
             kwargs['table'] = True
+
+        # 1.5. CachedTableBaseMixin: cache_ttl class keyword -> __cache_ttl__ attribute
+        if 'cache_ttl' in kwargs:
+            ttl = kwargs.pop('cache_ttl')
+            if not isinstance(ttl, int) or ttl <= 0:
+                raise ValueError(f"{name}: cache_ttl must be a positive integer, got: {ttl!r}")
+            attrs['__cache_ttl__'] = ttl
 
         # 2. Detect STI scenario and preprocess
         parent_tablename = None
@@ -302,9 +312,21 @@ class __DeclarativeMeta(SQLModelMetaclass):
             return False
 
         if has_different_tablename and parent_tablename:
+            # JTI FK must also be primary_key (created by SubclassIdMixin).
+            # A FK pointing to the parent table that is NOT a PK (e.g. self-referential
+            # parent_transaction_id) should NOT be identified as JTI inheritance.
+            def _is_jti_fk(fi: typing.Any) -> bool:
+                fk = getattr(fi, 'foreign_key', None)
+                pk = getattr(fi, 'primary_key', None)
+                return (
+                    fk is not None
+                    and isinstance(fk, str)
+                    and pk is True  # PydanticUndefined is truthy, must compare strictly
+                    and _fk_matches_parent(fk, parent_tablename)
+                )
+
             for field_name, field_info in cls.model_fields.items():
-                fk = getattr(field_info, 'foreign_key', None)
-                if fk is not None and isinstance(fk, str) and _fk_matches_parent(fk, parent_tablename):
+                if _is_jti_fk(field_info):
                     has_fk_to_parent = True
                     break
 
@@ -312,8 +334,7 @@ class __DeclarativeMeta(SQLModelMetaclass):
                 for base in bases:
                     if hasattr(base, 'model_fields'):
                         for field_name, field_info in base.model_fields.items():
-                            fk = getattr(field_info, 'foreign_key', None)
-                            if fk is not None and isinstance(fk, str) and _fk_matches_parent(fk, parent_tablename):
+                            if _is_jti_fk(field_info):
                                 has_fk_to_parent = True
                                 break
                     if has_fk_to_parent:
@@ -480,6 +501,12 @@ class __DeclarativeMeta(SQLModelMetaclass):
                                     if rel_info.sa_relationship_kwargs:
                                         rel_kwargs.update(rel_info.sa_relationship_kwargs)
 
+                                    # Default lazy='raise_on_sql' for async safety:
+                                    # prevents accidental lazy-loading which causes
+                                    # MissingGreenlet errors in async environments.
+                                    if 'lazy' not in rel_kwargs:
+                                        rel_kwargs['lazy'] = 'raise_on_sql'
+
                                     # STI foreign_keys deferred resolution:
                                     # STI child columns are not yet registered as ColumnProperty
                                     # during configure_mappers(), so string foreign_keys fail.
@@ -569,6 +596,11 @@ class __DeclarativeMeta(SQLModelMetaclass):
             if rel_info.sa_relationship_kwargs:
                 rel_kwargs.update(rel_info.sa_relationship_kwargs)
 
+            # Default lazy='raise_on_sql' for async safety: prevents accidental
+            # lazy-loading which causes MissingGreenlet errors in async environments.
+            if 'lazy' not in rel_kwargs:
+                rel_kwargs['lazy'] = 'raise_on_sql'
+
             rel_value = sa_relationship(relationship_to, *rel_args, **rel_kwargs)
             setattr(cls, rel_name, rel_value)
 
@@ -587,3 +619,53 @@ class SQLModelBase(SQLModel, metaclass=__DeclarativeMeta):
         """Get the set of computed_field names for this model class."""
         fields = cls.model_computed_fields
         return set(fields.keys()) if fields else set()
+
+
+class ExtraIgnoreModelBase(SQLModelBase):
+    """
+    Model base class that ignores unknown fields (extra='ignore').
+
+    Unlike SQLModelBase (extra='forbid'), this class silently ignores undeclared
+    fields and logs a WARNING for discoverability.
+
+    Use for:
+    - Third-party API responses (where the schema may change without notice)
+    - Client WebSocket message envelopes (protocol-level field validation)
+    - Any model parsing external JSON input (including nested sub-models)
+
+    Do NOT use for: request models that we construct and send to external services
+    (those should keep 'forbid' to catch mistakes).
+    """
+
+    model_config = ConfigDict(
+        use_attribute_docstrings=True, validate_by_name=True, extra='ignore',
+    )
+
+    @model_validator(mode='before')
+    @classmethod
+    def _warn_unknown_fields(cls, data: Any) -> Any:
+        """
+        Detect and warn about unknown fields in incoming data.
+
+        Logs a WARNING before Pydantic's extra='ignore' discards unknown fields,
+        helping developers notice third-party API changes and add field definitions.
+        """
+        if not isinstance(data, dict):
+            return data
+        accepted: set[str] = set()
+        for name, field_info in cls.model_fields.items():
+            accepted.add(name)
+            if field_info.alias:
+                accepted.add(field_info.alias)
+            if field_info.validation_alias and isinstance(field_info.validation_alias, str):
+                accepted.add(field_info.validation_alias)
+        unknown = set(data.keys()) - accepted
+        if unknown:
+            total = len(unknown)
+            sample = [name[:64] for name in sorted(unknown)[:5]]
+            logger.warning(
+                "External input contains unknown fields | model=%s "
+                "unknown_count=%d sample_fields=%s",
+                cls.__name__, total, sample,
+            )
+        return data
