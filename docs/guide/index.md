@@ -65,7 +65,7 @@ class UserBase(SQLModelBase):
     email: str
 
 # 表模型（建表，拥有 CRUD 能力）
-class User(UserBase, UUIDTableBaseMixin, table=True):
+class User(UserBase, UUIDTableBaseMixin, table=True): # [!code highlight]
     pass
 ```
 

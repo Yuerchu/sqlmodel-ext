@@ -83,8 +83,8 @@ class CalculatorTool(ToolSubclassIdMixin, Tool, AutoPolymorphicIdentityMixin, ta
 
 ```python
 tools = await Tool.get(session, fetch_mode="all")
-# tools[0] 是 WebSearchTool 实例
-# tools[1] 是 CalculatorTool 实例
+# tools[0] 是 WebSearchTool 实例 // [!code highlight]
+# tools[1] 是 CalculatorTool 实例 // [!code highlight]
 await tools[0].execute()  # 调用子类方法
 ```
 
@@ -95,20 +95,24 @@ class UserFile(SQLModelBase, UUIDTableBaseMixin, PolymorphicBaseMixin, table=Tru
     filename: str
 
 class PendingFile(UserFile, AutoPolymorphicIdentityMixin, table=True):
-    upload_deadline: datetime | None = None   # nullable，加到 userfile 表
+    upload_deadline: datetime | None = None   # nullable，加到 userfile 表 // [!code highlight]
 
 class CompletedFile(UserFile, AutoPolymorphicIdentityMixin, table=True):
-    file_size: int | None = None              # nullable，加到 userfile 表
+    file_size: int | None = None              # nullable，加到 userfile 表 // [!code highlight]
 
 # 所有模型定义完成后（configure_mappers 前后）：
 from sqlmodel_ext import (
     register_sti_columns_for_all_subclasses,
     register_sti_column_properties_for_all_subclasses,
 )
-register_sti_columns_for_all_subclasses()       # Phase 1：加列
+register_sti_columns_for_all_subclasses()       # Phase 1：加列 // [!code warning]
 # configure_mappers() ...
-register_sti_column_properties_for_all_subclasses()  # Phase 2：加属性
+register_sti_column_properties_for_all_subclasses()  # Phase 2：加属性 // [!code warning]
 ```
+
+::: warning 调用顺序很重要
+`register_sti_columns_for_all_subclasses()` 必须在 `configure_mappers()` **之前**调用，`register_sti_column_properties_for_all_subclasses()` 在**之后**调用。
+:::
 
 STI 子类的字段会自动以 nullable 列添加到父表中。
 

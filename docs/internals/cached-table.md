@@ -63,26 +63,26 @@ async def get(cls, session, condition, *, no_cache=False, ...):
         return await super().get(session, condition, ...)
 
     # 3. 检测是否为 ID 查询
-    id_value = cls._extract_id_from_condition(condition)
+    id_value = cls._extract_id_from_condition(condition) # [!code focus]
 
     # 4. 多 ID 缓存联合查询（load + MANYTOONE 关系）
     if id_value and load contains only cacheable MANYTOONE:
-        result = await cls._try_load_from_id_caches(...)
+        result = await cls._try_load_from_id_caches(...) # [!code focus]
         if result is not _LOAD_CACHE_MISS:
             return result
 
     # 5. 构建缓存键 + 尝试读取
     cache_key = cls._build_cache_key(condition, fetch_mode, ...)
-    cached = await cls._cache_get(cache_key)
+    cached = await cls._cache_get(cache_key) # [!code focus]
     if cached:
-        return cls._deserialize_result(cached, fetch_mode)
+        return cls._deserialize_result(cached, fetch_mode) # [!code highlight]
 
     # 6. 缓存未命中，查数据库
-    result = await super().get(session, condition, ...)
+    result = await super().get(session, condition, ...) # [!code warning]
 
     # 7. 写入缓存
     serialized = cls._serialize_result(result)
-    await cls._cache_set(cache_key, serialized, cls.__cache_ttl__)
+    await cls._cache_set(cache_key, serialized, cls.__cache_ttl__) # [!code focus]
 
     return result
 ```
@@ -137,11 +137,11 @@ async def save(self, session, ...):
     result = await super().save(session, ...)
 
     # commit=True 时立即失效
-    await self._invalidate_for_model(instance_id)
+    await self._invalidate_for_model(instance_id) # [!code focus]
 
     # 写穿刷新：将最新数据写入 ID 缓存
     serialized = cls._serialize_result(result)
-    await cls._cache_set(id_cache_key, serialized, cls.__cache_ttl__)
+    await cls._cache_set(id_cache_key, serialized, cls.__cache_ttl__) # [!code focus]
 
     return result
 ```
@@ -197,7 +197,11 @@ _LOAD_CACHE_MISS          # 多 ID 缓存联合查询未命中
 
 ## MissingGreenlet 规避
 
-commit 后 SQLAlchemy 重置对象关联状态，直接访问属性触发同步查询。解决方案：
+::: danger 风险点
+commit 后 SQLAlchemy 重置对象关联状态，直接访问属性触发同步查询。
+:::
+
+解决方案：
 
 - 提交前用 `getattr()` 提取 ID
 - 提交后用 `sa_inspect()` 从 identity map 读取（无 DB 查询）

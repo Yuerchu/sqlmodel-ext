@@ -61,4 +61,14 @@ export default defineConfig({
       next: '下一页',
     },
   },
+
+  markdown: {
+    container: {
+      tipLabel: '提示',
+      warningLabel: '注意',
+      dangerLabel: '危险',
+      infoLabel: '信息',
+      detailsLabel: '详细信息',
+    },
+  },
 })

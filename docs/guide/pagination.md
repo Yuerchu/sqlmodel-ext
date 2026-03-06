@@ -60,17 +60,17 @@ from typing import Annotated
 from fastapi import Depends
 from sqlmodel_ext import ListResponse, TableViewRequest
 
-TableViewDep = Annotated[TableViewRequest, Depends()]
+TableViewDep = Annotated[TableViewRequest, Depends()] # [!code highlight]
 
 @router.get("", response_model=ListResponse[ArticleResponse])
 async def list_articles(
     session: SessionDep, table_view: TableViewDep,
 ) -> ListResponse[Article]:
-    return await Article.get_with_count(
-        session,
-        Article.is_published == True,
-        table_view=table_view,
-    )
+    return await Article.get_with_count( # [!code focus]
+        session, # [!code focus]
+        Article.is_published == True, # [!code focus]
+        table_view=table_view, # [!code focus]
+    ) # [!code focus]
 ```
 
 客户端发送：

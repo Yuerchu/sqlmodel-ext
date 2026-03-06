@@ -9,11 +9,13 @@
 ```
 t1  管理员 A 读取订单（status="待发货", amount=100）
 t2  管理员 B 读取订单（status="待发货", amount=100）
-t3  管理员 A 改为 status="已发货" → 写回数据库
-t4  管理员 B 改为 amount=200     → 写回数据库
+t3  管理员 A 改为 status="已发货" → 写回数据库 ✓
+t4  管理员 B 改为 amount=200     → 写回数据库 ✓（覆盖了 A！）
 ```
 
-结果：B 的写入覆盖了 A 的修改，`status` 变回 "待发货"。
+::: danger 丢失更新
+B 的写入覆盖了 A 的修改，`status` 变回 "待发货"——A 的修改丢失了。
+:::
 
 ## 解决方案
 
@@ -21,12 +23,12 @@ t4  管理员 B 改为 amount=200     → 写回数据库
 
 ```sql
 -- A 更新：version=0 → 1
-UPDATE "order" SET status='已发货', version=1 WHERE id=1 AND version=0;
--- 影响 1 行
+UPDATE "order" SET status='已发货', version=1
+  WHERE id=1 AND version=0;  -- 影响 1 行 ✓ -- [!code highlight]
 
 -- B 更新：version 已经是 1，不再是 0
-UPDATE "order" SET amount=200, version=1 WHERE id=1 AND version=0;
--- 影响 0 行 → 检测到冲突
+UPDATE "order" SET amount=200, version=1
+  WHERE id=1 AND version=0;  -- 影响 0 行 → 检测到冲突！ -- [!code error]
 ```
 
 ## 使用方式
@@ -54,7 +56,7 @@ from sqlmodel_ext import OptimisticLockError
 
 try:
     order = await order.save(session)
-except OptimisticLockError as e:
+except OptimisticLockError as e: # [!code error]
     print(f"冲突: {e.model_class} id={e.record_id}")
     print(f"期望版本: {e.expected_version}")
     # 重新查询，提示用户刷新页面...
@@ -63,18 +65,19 @@ except OptimisticLockError as e:
 ### 自动重试（推荐）
 
 ```python
-order = await order.save(session, optimistic_retry_count=3)
+order = await order.save(session, optimistic_retry_count=3) # [!code highlight]
 # 冲突时最多重试 3 次，自动合并修改
 
-order = await order.update(session, data, optimistic_retry_count=3)
+order = await order.update(session, data, optimistic_retry_count=3) # [!code highlight]
 # update() 也支持
 ```
 
-重试过程：
+::: details 重试过程详解
 1. 第 1 次尝试 commit → 版本冲突
 2. 自动从数据库重新读取最新记录
 3. 把你的修改重新应用到最新记录上
 4. 第 2 次尝试 commit → 成功
+:::
 
 ## `OptimisticLockError` 上下文
 

@@ -9,7 +9,7 @@ class MyFunction(SQLModelBase, UUIDTableBaseMixin, table=True):
     generator: Generator = Relationship()
 
     async def calculate_cost(self, session) -> int:
-        config = self.generator.config    # MissingGreenlet!
+        config = self.generator.config    # MissingGreenlet! // [!code error]
         return config.price * 10
 ```
 
@@ -25,7 +25,7 @@ from sqlmodel_ext.mixins import RelationPreloadMixin, requires_relations
 class MyFunction(SQLModelBase, UUIDTableBaseMixin, RelationPreloadMixin, table=True):
     generator: Generator = Relationship()
 
-    @requires_relations('generator', Generator.config)
+    @requires_relations('generator', Generator.config) # [!code highlight]
     async def calculate_cost(self, session) -> int:
         # generator 和 generator.config 在执行前自动加载
         return self.generator.config.price * 10
@@ -80,10 +80,10 @@ class Account(SQLModelBase, UUIDTableBaseMixin, RelationPreloadMixin, table=True
 
 ```python
 account = await Account.get(session, Account.id == uid, with_for_update=True)
-await account.adjust_balance(session, amount=-100)  # OK
+await account.adjust_balance(session, amount=-100)  # OK // [!code ++]
 
 account = await Account.get_exist_one(session, uid)
-await account.adjust_balance(session, amount=-100)  # RuntimeError!
+await account.adjust_balance(session, amount=-100)  # RuntimeError! // [!code error]
 ```
 
 运行时通过 `session.info` 检查锁定状态。静态分析器也能在启动时检测未锁定的调用。
@@ -111,8 +111,10 @@ await instance.preload_for(session, 'calculate_cost', 'validate')
 
 sqlmodel-ext 对 MissingGreenlet 问题提供了三层保护：
 
+::: info 多层保护架构
 ```
 1. 启动时 AST 静态分析    ← 最早发现问题（见静态分析器）
 2. @requires_relations    ← 运行时自动加载
 3. lazy='raise_on_sql'    ← 最后的安全网
 ```
+:::

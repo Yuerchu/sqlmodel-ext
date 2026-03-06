@@ -53,11 +53,11 @@ async def save(self, session, ..., optimistic_retry_count=0):
             await session.commit()
             break                              # 成功
 
-        except StaleDataError as e:            # 版本冲突！
+        except StaleDataError as e:            # 版本冲突！ // [!code error]
             await session.rollback()
 
             if retries_remaining <= 0:
-                raise OptimisticLockError(
+                raise OptimisticLockError( # [!code error]
                     message=f"optimistic lock conflict",
                     model_class=cls.__name__,
                     record_id=str(instance.id),
@@ -69,19 +69,19 @@ async def save(self, session, ..., optimistic_retry_count=0):
 
             # 保存当前修改（排除元数据字段）
             if current_data is None:
-                current_data = self.model_dump(
-                    exclude={'id', 'version', 'created_at', 'updated_at'}
-                )
+                current_data = self.model_dump( # [!code focus]
+                    exclude={'id', 'version', 'created_at', 'updated_at'} # [!code focus]
+                ) # [!code focus]
 
             # 从数据库获取最新记录
-            fresh = await cls.get(session, cls.id == self.id)
+            fresh = await cls.get(session, cls.id == self.id) # [!code focus]
             if fresh is None:
                 raise OptimisticLockError("record has been deleted") from e
 
             # 把我的修改重新应用到最新记录上
-            for key, value in current_data.items():
-                if hasattr(fresh, key):
-                    setattr(fresh, key, value)
+            for key, value in current_data.items(): # [!code focus]
+                if hasattr(fresh, key): # [!code focus]
+                    setattr(fresh, key, value) # [!code focus]
             instance = fresh
 ```
 

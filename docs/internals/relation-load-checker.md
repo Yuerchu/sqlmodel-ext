@@ -49,8 +49,8 @@ class RelationLoadChecker:
 ```python
 @router.get("/user/{id}", response_model=UserResponse)
 async def get_user(session: SessionDep, id: UUID):
-    return await User.get_exist_one(session, id)
-    # RLC001: response_model 包含 profile，但查询没有 load=
+    return await User.get_exist_one(session, id) # [!code warning]
+    # ⚠ RLC001: response_model 包含 profile，但查询没有 load=
 ```
 
 ### RLC002：save/update 后访问关系
@@ -59,8 +59,8 @@ async def get_user(session: SessionDep, id: UUID):
 
 ```python
 user = await User.get_exist_one(session, id, load=User.profile)
-user = await user.update(session, data)   # 之后所有关系过期
-return user.profile                        # RLC002
+user = await user.update(session, data)   # 之后所有关系过期 // [!code warning]
+return user.profile                        # RLC002 // [!code error]
 ```
 
 ### RLC003：访问未加载的关系（本地变量）

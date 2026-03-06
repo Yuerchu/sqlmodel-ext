@@ -12,10 +12,10 @@ basedpyright 会把 SQLModel 的 Relationship 字段推断为注解类型（如 
 from sqlmodel_ext import rel
 
 # 不用 rel：basedpyright 报类型错误
-user = await User.get(session, load=User.profile)
+user = await User.get(session, load=User.profile) # [!code --]
 
 # 用 rel：类型正确
-user = await User.get(session, load=rel(User.profile))
+user = await User.get(session, load=rel(User.profile)) # [!code ++]
 ```
 
 ### `cond()` — 类型安全的条件组合
@@ -25,8 +25,8 @@ user = await User.get(session, load=rel(User.profile))
 ```python
 from sqlmodel_ext import cond
 
-scope = cond(UserFile.user_id == current_user.id)
-condition = scope & cond(UserFile.status == FileStatusEnum.uploaded)
+scope = cond(UserFile.user_id == current_user.id) # [!code highlight]
+condition = scope & cond(UserFile.status == FileStatusEnum.uploaded) # [!code highlight]
 users = await UserFile.get(session, condition, fetch_mode="all")
 ```
 
@@ -56,19 +56,16 @@ except IntegrityError as e:
 
 ## `save()` — 创建或更新
 
-```python
+```python{3}
 user = User(name="Alice", email="alice@example.com")
-user = await user.save(session)
+await user.save(session)            # 禁止这么写，会导致过期 // [!code --]
+user = await user.save(session)     # 正确写法 // [!code ++]
 print(user.id)  # 已有值
 
 # 修改后再次 save = UPDATE
 user.name = "Bob"
 user = await user.save(session)
 ```
-
-::: warning 必须使用返回值
-`save()` 返回刷新后的实例。`commit()` 后原对象属性会过期，直接使用可能触发隐式查询。
-:::
 
 ### 参数
 
@@ -82,7 +79,7 @@ user = await user.save(session)
 # 批量操作：前面只 flush，最后一个 commit
 await user1.save(session, commit=False)
 await user2.save(session, commit=False)
-user3 = await user3.save(session)  # 一次性 commit 全部
+user3 = await user3.save(session)  # 一次性 commit 全部 // [!code highlight]
 
 # 保存后预加载关系
 user = await user.save(session, load=User.profile)
@@ -105,7 +102,7 @@ class UserUpdate(SQLModelBase):
     name: str | None = None
     email: str | None = None
 
-data = UserUpdate(name="Bob")  # 只设置了 name
+data = UserUpdate(name="Bob")  # 只设置了 name // [!code highlight]
 user = await user.update(session, data)
 # 只更新 name，email 保持不变（exclude_unset=True）
 ```
@@ -135,8 +132,8 @@ user = await user.update(session, data, exclude={"role", "is_admin"})
 await User.delete(session, user)
 await User.delete(session, [user1, user2])
 
-# 按条件批量删除
-count = await User.delete(session, condition=User.is_active == False)
+# 按条件批量删除（⚠️ 将删除所有匹配记录）
+count = await User.delete(session, condition=User.is_active == False) # [!code warning]
 ```
 
 返回值为删除的记录数。
@@ -148,14 +145,14 @@ count = await User.delete(session, condition=User.is_active == False)
 ### 基本查询
 
 ```python
-# 按条件查第一条
+# 按条件查第一条（默认 fetch_mode="first"）
 user = await User.get(session, User.email == "alice@example.com")
 
 # 查所有
-users = await User.get(session, fetch_mode="all")
+users = await User.get(session, fetch_mode="all") # [!code highlight]
 
 # 精确查一条（0 条或多条都报错）
-user = await User.get(session, User.id == some_id, fetch_mode="one")
+user = await User.get(session, User.id == some_id, fetch_mode="one") # [!code highlight]
 ```
 
 ### `fetch_mode` 返回值
@@ -193,7 +190,7 @@ users = await User.get(
 user = await User.get(
     session,
     User.id == user_id,
-    load=[User.profile, Profile.avatar],
+    load=[User.profile, Profile.avatar], # [!code highlight]
 )
 # 自动构建: selectinload(User.profile).selectinload(Profile.avatar)
 ```
@@ -230,19 +227,21 @@ result = await User.get_with_count(session, table_view=table_view)
 
 ```python
 user = await User.get_one(session, user_id)
-# 记录不存在 → NoResultFound
-# 多条记录 → MultipleResultsFound
+# 记录不存在 → NoResultFound // [!code error]
+# 多条记录 → MultipleResultsFound // [!code error]
 
 # 带锁查询
 user = await User.get_one(session, user_id, with_for_update=True)
 ```
 
-与 `get_exist_one()` 的区别：`get_one()` 抛 SQLAlchemy 异常，`get_exist_one()` 抛 HTTP 404。
+::: tip get_one() vs get_exist_one()
+`get_one()` 抛 SQLAlchemy 异常（`NoResultFound`），`get_exist_one()` 抛 HTTP 404（有 FastAPI 时）或 `RecordNotFoundError`。
+:::
 
 ## `get_exist_one()` — 查找或 404
 
 ```python
-user = await User.get_exist_one(session, user_id)
+user = await User.get_exist_one(session, user_id) # [!code highlight]
 # 找不到自动抛 HTTPException(404)（有 FastAPI 时）
 # 或 RecordNotFoundError（无 FastAPI 时）
 

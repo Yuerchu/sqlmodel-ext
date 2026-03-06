@@ -37,9 +37,9 @@ async def save(self, session, ..., optimistic_retry_count=0):
     while True:
         session.add(instance)
         try:
-            await session.commit()
-            break                              # 成功，退出
-        except StaleDataError as e:            # 版本冲突！
+            await session.commit() # [!code focus]
+            break                              # 成功，退出 // [!code focus]
+        except StaleDataError as e:            # 版本冲突！ // [!code error]
             await session.rollback()
 
             if retries_remaining <= 0:
@@ -60,17 +60,17 @@ async def save(self, session, ..., optimistic_retry_count=0):
                 )
 
             # 从数据库获取最新记录
-            fresh = await cls.get(session, cls.id == self.id)
+            fresh = await cls.get(session, cls.id == self.id) # [!code focus]
             if fresh is None:
                 raise OptimisticLockError("record has been deleted") from e
 
             # 把我的修改重新应用到最新记录上
-            for key, value in current_data.items():
-                if hasattr(fresh, key):
-                    setattr(fresh, key, value)
+            for key, value in current_data.items(): # [!code focus]
+                if hasattr(fresh, key): # [!code focus]
+                    setattr(fresh, key, value) # [!code focus]
             instance = fresh
 
-    await session.refresh(instance)
+    await session.refresh(instance) # [!code highlight]
     return instance
 ```
 
@@ -82,20 +82,24 @@ async def save(self, session, ..., optimistic_retry_count=0):
 
 ### 为什么必须用返回值？
 
+::: danger 对象过期
 `session.commit()` 让**所有 Session 中的对象过期**。原 `user` 对象属性变成"过期"状态，访问时触发隐式查询。`save()` 返回 `refresh()` 后的新鲜对象。
+:::
 
 ## `update()` 实现
 
 ```python
 async def update(self, session, other, extra_data=None,
                  exclude_unset=True, exclude=None, ...):
-    update_data = other.model_dump(exclude_unset=exclude_unset, exclude=exclude)
+    update_data = other.model_dump(exclude_unset=exclude_unset, exclude=exclude) # [!code focus]
     instance.sqlmodel_update(update_data, update=extra_data)
     session.add(instance)
     await session.commit()
 ```
 
-核心是 `exclude_unset=True` 实现 **PATCH 语义**：只有显式设置的字段才会被更新。
+::: tip PATCH 语义
+核心是 `exclude_unset=True`：只有显式设置的字段才会被更新，未设置的字段保持原值。
+:::
 
 ## `get()` 实现
 
@@ -137,12 +141,12 @@ def _build_time_filters(cls, created_before, created_after, ...):
 ```python
 if load:
     load_list = load if isinstance(load, list) else [load]
-    load_chains = cls._build_load_chains(load_list)
+    load_chains = cls._build_load_chains(load_list) # [!code focus]
 
     for chain in load_chains:
-        loader = selectinload(chain[0])
+        loader = selectinload(chain[0]) # [!code focus]
         for rel in chain[1:]:
-            loader = loader.selectinload(rel)
+            loader = loader.selectinload(rel) # [!code focus]
         statement = statement.options(loader)
 ```
 
@@ -209,12 +213,14 @@ async def get_exist_one(cls, session, id, load=None):
     instance = await cls.get(session, col(cls.id) == id, load=load)
     if not instance:
         if _HAS_FASTAPI:
-            raise _FastAPIHTTPException(status_code=404, detail="Not found")
-        raise RecordNotFoundError("Not found")
+            raise _FastAPIHTTPException(status_code=404, detail="Not found") # [!code highlight]
+        raise RecordNotFoundError("Not found") # [!code highlight]
     return instance
 ```
 
+::: info 自适应异常
 在**模块导入时**检测 FastAPI 是否安装，有则抛 `HTTPException(404)`，无则抛 `RecordNotFoundError`。
+:::
 
 ## `sanitize_integrity_error()` 实现
 

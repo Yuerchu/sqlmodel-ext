@@ -14,20 +14,20 @@ def requires_relations(*relations):
         if is_async_gen:
             @wraps(func)
             async def wrapper(self, *args, **kwargs):
-                session = _extract_session(func, args, kwargs)
+                session = _extract_session(func, args, kwargs) # [!code focus]
                 if session is not None:
-                    await self._ensure_relations_loaded(session, relations)
+                    await self._ensure_relations_loaded(session, relations) # [!code focus]
                 async for item in func(self, *args, **kwargs):
                     yield item
         else:
             @wraps(func)
             async def wrapper(self, *args, **kwargs):
-                session = _extract_session(func, args, kwargs)
+                session = _extract_session(func, args, kwargs) # [!code focus]
                 if session is not None:
-                    await self._ensure_relations_loaded(session, relations)
+                    await self._ensure_relations_loaded(session, relations) # [!code focus]
                 return await func(self, *args, **kwargs)
 
-        wrapper._required_relations = relations
+        wrapper._required_relations = relations # [!code highlight]
         return wrapper
     return decorator
 ```
@@ -81,14 +81,16 @@ class RelationPreloadMixin:
             if method and hasattr(method, '_required_relations'):
                 for spec in method._required_relations:
                     if isinstance(spec, str):
-                        if spec not in all_available_names:
-                            raise AttributeError(
-                                f"{cls.__name__}.{method_name} 声明了 '{spec}'，"
-                                f"但 {cls.__name__} 没有这个属性"
-                            )
+                        if spec not in all_available_names: # [!code focus]
+                            raise AttributeError( # [!code focus]
+                                f"{cls.__name__}.{method_name} 声明了 '{spec}'，" # [!code focus]
+                                f"但 {cls.__name__} 没有这个属性" # [!code focus]
+                            ) # [!code focus]
 ```
 
+::: tip 导入时验证
 在类定义时（导入时）就检查关系名是否存在。拼写错误立刻报错，不等到运行时。
+:::
 
 ### `_is_relation_loaded()` — 检查加载状态
 
@@ -167,10 +169,10 @@ def requires_for_update(func):
     async def wrapper(self, *args, **kwargs):
         session = _extract_session(func, args, kwargs)
         if session is not None:
-            locked: set[int] = session.info.get(SESSION_FOR_UPDATE_KEY, set())
-            if id(self) not in locked:
+            locked: set[int] = session.info.get(SESSION_FOR_UPDATE_KEY, set()) # [!code focus]
+            if id(self) not in locked: # [!code focus]
                 cls_name = type(self).__name__
-                raise RuntimeError(
+                raise RuntimeError( # [!code error]
                     f"{cls_name}.{func.__name__}() requires a FOR UPDATE locked instance. "
                     f"Call {cls_name}.get(session, ..., with_for_update=True) first."
                 )

@@ -71,11 +71,13 @@ class Webhook(SQLModelBase):
 
 `SafeHttpUrl` 在验证 URL 格式之外，还会阻止指向内网的地址，防止 SSRF 攻击：
 
+::: danger SSRF 防护
 - 禁止 `localhost`、`127.0.0.1`、`::1` 等回环地址
 - 禁止 `10.x.x.x`、`192.168.x.x`、`172.16-31.x.x` 等私有 IP
 - 禁止链路本地地址和保留地址
 
 适用于用户提交的回调 URL、Webhook 地址等场景。
+:::
 
 ## IPAddress 类型
 
@@ -102,6 +104,10 @@ class Storage(SQLModelBase):
 ```
 
 ## PostgreSQL 专属类型
+
+::: warning 仅限 PostgreSQL
+`Array[T]` 使用 PostgreSQL 原生 `ARRAY` 列类型，不适用于 SQLite 等其他数据库。
+:::
 
 ```python
 from sqlmodel_ext.field_types.dialects.postgresql import Array

@@ -37,7 +37,7 @@ async def demo(session: AsyncSession):
     await session.refresh(user)  # 从数据库重新读取最新状态
 ```
 
-::: tip 关键理解
+::: danger 关键理解
 `session.add()` 不执行 SQL，它只把对象放入"待处理队列"。
 `session.commit()` 才真正执行 SQL，并且**会让 Session 中所有对象过期**。
 过期的对象在下次访问属性时会触发新的 SQL 查询。在异步环境中，这会导致 `MissingGreenlet` 错误。
@@ -78,7 +78,7 @@ class Article(SQLModel, table=True):
 ```python
 async def get_user_articles(session: AsyncSession):
     user = await session.get(User, 1)
-    print(user.articles)  # MissingGreenlet — 隐式同步查询在异步上下文中不行
+    print(user.articles)  # MissingGreenlet! // [!code error]
 ```
 
 解决办法是**预加载**：
@@ -86,10 +86,10 @@ async def get_user_articles(session: AsyncSession):
 ```python
 from sqlalchemy.orm import selectinload
 
-statement = select(User).options(selectinload(User.articles))
+statement = select(User).options(selectinload(User.articles)) # [!code highlight]
 result = await session.exec(statement)
 user = result.first()
-print(user.articles)  # 已加载，不触发额外查询
+print(user.articles)  # 已加载，不触发额外查询 // [!code highlight]
 ```
 
 sqlmodel-ext 的 `load` 参数和 `RelationPreloadMixin` 就是对这个问题的封装。

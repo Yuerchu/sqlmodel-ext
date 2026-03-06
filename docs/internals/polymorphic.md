@@ -78,7 +78,8 @@ def create_subclass_id_mixin(parent_table_name: str) -> type:
 
 ```python
 class WebSearchTool(ToolSubclassIdMixin, Tool, AutoPolymorphicIdentityMixin, table=True):
-    ...  # ToolSubclassIdMixin 的 id（带外键）优先
+#                   ↑ 必须放在最前面
+    ...  # ToolSubclassIdMixin 的 id（带外键）优先 // [!code highlight]
 ```
 
 ## `AutoPolymorphicIdentityMixin` — 自动 identity
@@ -141,8 +142,8 @@ def _register_sti_columns(cls):
         if field_name in existing_columns: continue
 
         column = get_column_from_field(field_info)
-        column.nullable = True            # STI 子类字段必须 nullable
-        parent_table.append_column(column)
+        column.nullable = True            # STI 子类字段必须 nullable // [!code warning]
+        parent_table.append_column(column) # [!code focus]
 ```
 
 ### Phase 2：`_register_sti_column_properties()`

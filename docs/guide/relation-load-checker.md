@@ -6,11 +6,13 @@
 
 这是 MissingGreenlet 问题的**第一道防线**——在任何请求到来之前，扫描你的代码，找出所有潜在问题。
 
+::: info 三道防线
 ```
 1. 启动时 AST 静态分析（本模块）  ← 最早发现问题
 2. @requires_relations 运行时预加载  ← 自动修复问题
 3. lazy='raise_on_sql' 运行时拦截    ← 最后的安全网
 ```
+:::
 
 ## 检测规则
 
@@ -64,8 +66,8 @@ class UserResponse(SQLModelBase):
 
 @router.get("/user/{id}", response_model=UserResponse)
 async def get_user(session: SessionDep, id: UUID):
-    return await User.get_exist_one(session, id)
-    # RLC001: response_model 包含 profile，但查询没有 load=User.profile
+    return await User.get_exist_one(session, id) # [!code warning]
+    # ⚠ RLC001: response_model 包含 profile，但查询没有 load=User.profile
 ```
 
 ### RLC002：save 后访问关系
@@ -73,8 +75,8 @@ async def get_user(session: SessionDep, id: UUID):
 ```python
 async def update_user(session, id, data):
     user = await User.get_exist_one(session, id, load=User.profile)
-    user = await user.update(session, data)  # commit 后关系过期
-    return user.profile                       # RLC002
+    user = await user.update(session, data)  # commit 后关系过期 // [!code warning]
+    return user.profile                       # RLC002 // [!code error]
 ```
 
 ### RLC007：commit 后访问列
@@ -83,8 +85,8 @@ async def update_user(session, id, data):
 async def create_and_log(session, data):
     user = User(**data)
     session.add(user)
-    await session.commit()     # user 过期
-    print(user.name)           # RLC007
+    await session.commit()     # user 过期 // [!code warning]
+    print(user.name)           # RLC007 // [!code error]
 ```
 
 ## `RelationLoadWarning`
