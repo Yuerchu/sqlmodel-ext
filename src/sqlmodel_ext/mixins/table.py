@@ -118,9 +118,9 @@ class TableBaseMixin(AsyncAttrs):
 
     id: int | None = Field(default=None, primary_key=True)
 
-    created_at: datetime = Field(default_factory=now)
+    created_at: datetime = Field(default_factory=now, sa_type=DateTime(timezone=True))
     updated_at: datetime = Field(
-        sa_type=DateTime,
+        sa_type=DateTime(timezone=True),
         sa_column_kwargs={'default': now, 'onupdate': now},
         default_factory=now
     )

@@ -6,6 +6,8 @@
 
 **English** | [中文](README_zh.md)
 
+> **Warning**: This project is under active development. APIs may change without notice between releases. No stability or backward-compatibility guarantees are provided at this stage. Use at your own risk.
+
 Extended SQLModel infrastructure: smart metaclass, async CRUD mixins, polymorphic inheritance, optimistic locking, relation preloading, and reusable field types.
 
 **sqlmodel-ext** eliminates the boilerplate of building async database applications with [SQLModel](https://sqlmodel.tiangolo.com/). Define your models, inherit a mixin, and get a full async CRUD API -- pagination, relationship loading, polymorphic queries, and optimistic locking included.

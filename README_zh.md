@@ -6,6 +6,8 @@
 
 [English](README.md) | **中文**
 
+> **警告**：本项目正在积极开发中。API 可能在版本之间发生不兼容变更，且不提供任何稳定性或向后兼容性保证。请自行承担使用风险。
+
 SQLModel 增强基础设施：智能元类、异步 CRUD Mixin、多态继承、乐观锁、关系预加载、可复用字段类型。
 
 **sqlmodel-ext** 消除了使用 [SQLModel](https://sqlmodel.tiangolo.com/) 构建异步数据库应用时的样板代码。定义模型、继承一个 Mixin，即可获得完整的异步 CRUD API -- 分页、关系加载、多态查询、乐观锁一应俱全。

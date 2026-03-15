@@ -20,7 +20,7 @@ Quick start::
     user = await user.save(session)
     users = await User.get(session, fetch_mode="all")
 """
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # Base
 from sqlmodel_ext.base import SQLModelBase, ExtraIgnoreModelBase
@@ -82,7 +82,9 @@ from sqlmodel_ext.field_types import (
     Str128,
     Str255,
     Str256,
+    Str500,
     Str512,
+    Str2048,
     Text1K,
     Text1024,
     Text2K,
@@ -93,7 +95,9 @@ from sqlmodel_ext.field_types import (
     Text60K,
     Text64K,
     Text100K,
+    Text1M,
     # Numeric constraints
+    INT32_MAX,
     Port,
     Percentage,
     PositiveInt,

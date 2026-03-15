@@ -1,5 +1,5 @@
 """Internal utility functions."""
-from datetime import datetime
+from datetime import datetime, timezone
 
-now = lambda: datetime.now()
-now_date = lambda: datetime.now().date()
+now = lambda: datetime.now(timezone.utc)
+now_date = lambda: datetime.now(timezone.utc).date()

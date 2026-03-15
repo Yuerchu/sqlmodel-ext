@@ -40,8 +40,8 @@ from uuid import UUID
 
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
-from sqlalchemy import Column, Enum as SAEnum, Integer, String, event, inspect
-from sqlalchemy.orm import ColumnProperty, Mapped, mapped_column
+from sqlalchemy import Column, Enum as SAEnum, Integer, String, Table, event
+from sqlalchemy.orm import ColumnProperty, Mapped, class_mapper, mapped_column
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlmodel import Field
 from sqlmodel.main import get_column_from_field
@@ -185,6 +185,18 @@ def _register_strenum_coercion_for_subclass(cls: type) -> None:
     @event.listens_for(cls, 'refresh')
     def _on_refresh(target, context, attrs):
         _coerce(target)
+
+    # Wrap __init__: SQLModel table=True generates an __init__ that bypasses Pydantic
+    # validation, so StrEnum fields are written as raw str to __dict__ (overwriting any
+    # conversion done by SQLAlchemy set events). Execute StrEnum coercion immediately
+    # after __init__ completes.
+    original_init = cls.__init__
+
+    def _wrapped_init(self: Any, *args: Any, **kwargs: Any) -> None:
+        original_init(self, *args, **kwargs)
+        _coerce(self)
+
+    cls.__init__ = _wrapped_init  # type: ignore[method-assign]
 
 
 def _fix_polluted_model_fields(cls: type) -> None:
@@ -350,8 +362,9 @@ class AutoPolymorphicIdentityMixin:
         _sti_subclasses_to_register.append(cls)
 
     @classmethod
-    def __pydantic_init_subclass__(cls, **kwargs):
-        super().__pydantic_init_subclass__(**kwargs)
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        if hasattr(super(), '__pydantic_init_subclass__'):
+            super().__pydantic_init_subclass__(**kwargs)
         _fix_polluted_model_fields(cls)
 
     @classmethod
@@ -434,38 +447,57 @@ class AutoPolymorphicIdentityMixin:
 
         Call after ``configure_mappers()``.
         JTI classes are automatically skipped.
+
+        Subclass column properties are registered to the child mapper **and all
+        STI ancestor mappers** sharing the same table.  This ensures that queries
+        on any ancestor level (e.g. ``select(FileGenerator)``) include all STI
+        subclass columns in the SELECT, avoiding deferred/unloaded attributes
+        that break cache serialization.
+
+        Bug-fix history:
+        - The original implementation only registered to the first parent mapper
+          found in the MRO.  Higher-level ancestors (e.g. ``Generator`` above
+          ``ImageGenerator``) were missed, causing ``select(Generator)`` to omit
+          STI subclass columns — ``model_dump()`` then dropped required fields,
+          and cache deserialization raised ``ValidationError``.
         """
-        parent_table = None
-        parent_class = None
+        # Collect ALL STI ancestors sharing the same table (nearest to farthest)
+        sti_table: Table | None = None
+        sti_ancestors: list[type] = []
         for base in cls.__mro__[1:]:
             if hasattr(base, '__table__') and base.__table__ is not None:
-                parent_table = base.__table__
-                parent_class = base
-                break
+                if sti_table is None:
+                    sti_table = base.__table__
+                    sti_ancestors.append(base)
+                elif base.__table__.name == sti_table.name:
+                    sti_ancestors.append(base)
+                else:
+                    break  # Different table = JTI boundary, stop
 
-        if parent_table is None:
+        if sti_table is None or not sti_ancestors:
             return
 
+        # JTI detection: skip if this class has its own distinct table
         if hasattr(cls, '__table__') and cls.__table__ is not None:
-            if cls.__table__.name != parent_table.name:
+            if cls.__table__.name != sti_table.name:
                 return
 
-        child_mapper = inspect(cls).mapper
-        parent_mapper = inspect(parent_class).mapper
+        child_mapper = class_mapper(cls)
         local_table = child_mapper.local_table
 
-        parent_fields: set[str] = set()
-        if hasattr(parent_class, 'model_fields'):
-            parent_fields.update(parent_class.model_fields.keys())
+        # Use the STI root class (farthest ancestor) to determine inherited fields
+        root_class = sti_ancestors[-1]
+        root_fields: set[str] = set()
+        if hasattr(root_class, 'model_fields'):
+            root_fields.update(root_class.model_fields.keys())
 
         if not hasattr(cls, 'model_fields'):
             return
 
         child_existing_props = {p.key for p in child_mapper.column_attrs}
-        parent_existing_props = {p.key for p in parent_mapper.column_attrs}
 
         for field_name in cls.model_fields:
-            if field_name in parent_fields:
+            if field_name in root_fields:
                 continue
             if field_name.startswith('_'):
                 continue
@@ -474,6 +506,7 @@ class AutoPolymorphicIdentityMixin:
 
             column = local_table.columns[field_name]
 
+            # Add to the child's mapper (if not already present)
             if field_name not in child_existing_props:
                 try:
                     prop = ColumnProperty(column)
@@ -481,14 +514,19 @@ class AutoPolymorphicIdentityMixin:
                 except Exception as e:
                     logger.warning(f"Failed to add column property {field_name} to {cls.__name__}: {e}")
 
-            if field_name not in parent_existing_props:
-                try:
-                    prop = ColumnProperty(column)
-                    parent_mapper.add_property(field_name, prop)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to add column property {field_name} from {cls.__name__} to parent {parent_class.__name__}: {e}"
-                    )
+            # Add to ALL STI ancestors' mappers so queries at any level include this column
+            for ancestor in sti_ancestors:
+                ancestor_mapper = class_mapper(ancestor)
+                ancestor_existing_props = {p.key for p in ancestor_mapper.column_attrs}
+                if field_name not in ancestor_existing_props:
+                    try:
+                        prop = ColumnProperty(column)
+                        ancestor_mapper.add_property(field_name, prop)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to add column property {field_name} from {cls.__name__} "
+                            f"to ancestor {ancestor.__name__}: {e}"
+                        )
 
 
 class PolymorphicBaseMixin:
@@ -545,14 +583,20 @@ class PolymorphicBaseMixin:
         """
         Detect whether this class uses Joined Table Inheritance.
 
+        Checks if any direct subclass has a distinct ``local_table``.
+
         :returns: True for JTI, False for STI or no subclasses
         """
-        mapper = inspect(cls)
-        base_table_name = mapper.local_table.name
+        mapper = class_mapper(cls)
+        base_table = mapper.local_table
+        assert isinstance(base_table, Table), f"{cls.__name__} local_table is not a Table instance"
+        base_table_name = base_table.name
 
         for subclass in cls.__subclasses__():
-            sub_mapper = inspect(subclass)
-            if sub_mapper.local_table.name != base_table_name:
+            sub_mapper = class_mapper(subclass)
+            sub_table = sub_mapper.local_table
+            assert isinstance(sub_table, Table)
+            if sub_table.name != base_table_name:
                 return True
 
         return False
@@ -568,9 +612,10 @@ class PolymorphicBaseMixin:
         """
         result: list[type[PolymorphicBaseMixin]] = []
         for subclass in cls.__subclasses__():
-            mapper = inspect(subclass)
+            mapper = class_mapper(subclass)
             if not mapper.polymorphic_abstract:
                 result.append(subclass)
+            # Recurse regardless of abstract status (abstract classes may have concrete children)
             if hasattr(subclass, 'get_concrete_subclasses'):
                 result.extend(subclass.get_concrete_subclasses())
         return result
@@ -583,7 +628,7 @@ class PolymorphicBaseMixin:
         :returns: Discriminator field name (e.g. '_polymorphic_name')
         :raises ValueError: If polymorphic_on is not configured
         """
-        polymorphic_on = inspect(cls).polymorphic_on
+        polymorphic_on = class_mapper(cls).polymorphic_on
         if polymorphic_on is None:
             raise ValueError(
                 f"{cls.__name__} does not have polymorphic_on configured. "
@@ -602,7 +647,7 @@ class PolymorphicBaseMixin:
         """
         result: dict[str, type[PolymorphicBaseMixin]] = {}
         for subclass in cls.get_concrete_subclasses():
-            identity = inspect(subclass).polymorphic_identity
+            identity = class_mapper(subclass).polymorphic_identity
             if identity:
                 result[identity] = subclass
         return result
