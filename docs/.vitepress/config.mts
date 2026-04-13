@@ -8,7 +8,19 @@ export default withMermaid({
   title: 'sqlmodel-ext',
 
   vite: {
-    plugins: [llmstxt()],
+    plugins: [
+      llmstxt({
+        // Exclude legacy redirect placeholders. The old guide/internals trees were
+        // migrated to tutorials/how-to/reference/explanation under Diátaxis;
+        // the placeholders only carry meta-refresh stubs and would pollute llms-full.txt.
+        ignoreFiles: [
+          'guide/*',
+          'internals/*',
+          'en/guide/*',
+          'en/internals/*',
+        ],
+      }),
+    ],
     optimizeDeps: {
       include: ['mermaid', 'dayjs'],
     },

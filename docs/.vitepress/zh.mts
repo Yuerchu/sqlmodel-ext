@@ -2,45 +2,71 @@ import type { DefaultTheme } from 'vitepress'
 
 export const zh = {
   lang: 'zh-CN',
-  description: 'SQLModel 增强库：使用指南与实现原理',
+  description: 'SQLModel 增强库 — 教程、操作指南、参考、讲解',
 
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-      { text: '指南', link: '/guide/' },
-      { text: '原理', link: '/internals/' },
+      { text: '教程', link: '/tutorials/' },
+      { text: '操作指南', link: '/how-to/' },
+      { text: '参考', link: '/reference/' },
+      { text: '讲解', link: '/explanation/' },
     ],
 
     sidebar: {
-      '/guide/': [
+      '/tutorials/': [
         {
-          text: '指南',
+          text: '教程',
           items: [
-            { text: '快速开始', link: '/guide/' },
-            { text: '字段类型', link: '/guide/field-types' },
-            { text: 'CRUD 操作', link: '/guide/crud' },
-            { text: '分页与列表', link: '/guide/pagination' },
-            { text: '多态继承', link: '/guide/polymorphic' },
-            { text: '乐观锁', link: '/guide/optimistic-lock' },
-            { text: '关系预加载', link: '/guide/relation-preload' },
-            { text: 'Redis 缓存', link: '/guide/cached-table' },
-            { text: '静态分析器', link: '/guide/relation-load-checker' },
+            { text: '总览', link: '/tutorials/' },
+            { text: '01 · 快速上手', link: '/tutorials/01-getting-started' },
+            { text: '02 · 构建博客 API', link: '/tutorials/02-building-a-blog-api' },
+            { text: '03 · 给博客加 Redis 缓存', link: '/tutorials/03-adding-redis-cache' },
           ],
         },
       ],
-      '/internals/': [
+      '/how-to/': [
         {
-          text: '实现原理',
+          text: '操作指南',
           items: [
-            { text: '架构总览', link: '/internals/' },
-            { text: '前置知识', link: '/internals/prerequisites' },
-            { text: '元类与 SQLModelBase', link: '/internals/metaclass' },
-            { text: 'CRUD 实现', link: '/internals/crud' },
-            { text: '多态继承机制', link: '/internals/polymorphic' },
-            { text: '乐观锁机制', link: '/internals/optimistic-lock' },
-            { text: '关系预加载机制', link: '/internals/relation-preload' },
-            { text: 'Redis 缓存机制', link: '/internals/cached-table' },
-            { text: '静态分析器原理', link: '/internals/relation-load-checker' },
+            { text: '总览', link: '/how-to/' },
+            { text: '集成 FastAPI', link: '/how-to/integrate-with-fastapi' },
+            { text: '给列表端点加分页', link: '/how-to/paginate-a-list-endpoint' },
+            { text: '定义 JTI 联表继承模型', link: '/how-to/define-jti-models' },
+            { text: '定义 STI 单表继承模型', link: '/how-to/define-sti-models' },
+            { text: '处理并发更新', link: '/how-to/handle-concurrent-updates' },
+            { text: '防止 MissingGreenlet 错误', link: '/how-to/prevent-missing-greenlet' },
+            { text: '给查询加 Redis 缓存', link: '/how-to/cache-queries' },
+          ],
+        },
+      ],
+      '/reference/': [
+        {
+          text: '参考',
+          items: [
+            { text: '总览', link: '/reference/' },
+            { text: '基础类', link: '/reference/base-classes' },
+            { text: 'CRUD 方法', link: '/reference/crud-methods' },
+            { text: '字段类型', link: '/reference/field-types' },
+            { text: 'Mixin 类', link: '/reference/mixins' },
+            { text: '装饰器与辅助函数', link: '/reference/decorators' },
+            { text: '分页类型', link: '/reference/pagination-types' },
+          ],
+        },
+      ],
+      '/explanation/': [
+        {
+          text: '讲解',
+          items: [
+            { text: '总览', link: '/explanation/' },
+            { text: '前置知识', link: '/explanation/prerequisites' },
+            { text: '元类与 SQLModelBase', link: '/explanation/metaclass' },
+            { text: 'CRUD 实现', link: '/explanation/crud-pipeline' },
+            { text: '多态继承机制', link: '/explanation/polymorphic-internals' },
+            { text: '乐观锁机制', link: '/explanation/optimistic-lock' },
+            { text: '关系预加载机制', link: '/explanation/relation-preload' },
+            { text: 'Redis 缓存机制', link: '/explanation/cached-table' },
+            { text: '静态分析器原理', link: '/explanation/relation-load-checker' },
           ],
         },
       ],

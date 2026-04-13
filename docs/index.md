@@ -7,11 +7,17 @@ hero:
   tagline: 定义模型，继承 Mixin，获得完整的异步 CRUD API
   actions:
     - theme: brand
-      text: 使用指南
-      link: /guide/
+      text: 教程
+      link: /tutorials/
     - theme: alt
-      text: 实现原理
-      link: /internals/
+      text: 操作指南
+      link: /how-to/
+    - theme: alt
+      text: 参考
+      link: /reference/
+    - theme: alt
+      text: 讲解
+      link: /explanation/
     - theme: alt
       text: GitHub
       link: https://github.com/Foxerine/sqlmodel-ext

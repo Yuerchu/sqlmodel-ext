@@ -7,11 +7,17 @@ hero:
   tagline: Define models, inherit Mixins, get a complete async CRUD API
   actions:
     - theme: brand
-      text: Usage Guide
-      link: /en/guide/
+      text: Tutorials
+      link: /en/tutorials/
     - theme: alt
-      text: Implementation Internals
-      link: /en/internals/
+      text: How-to
+      link: /en/how-to/
+    - theme: alt
+      text: Reference
+      link: /en/reference/
+    - theme: alt
+      text: Explanation
+      link: /en/explanation/
     - theme: alt
       text: GitHub
       link: https://github.com/Foxerine/sqlmodel-ext

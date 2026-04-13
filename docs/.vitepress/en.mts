@@ -2,45 +2,71 @@ import type { DefaultTheme } from 'vitepress'
 
 export const en = {
   lang: 'en',
-  description: 'SQLModel Enhancement Library: Usage Guide & Implementation Internals',
+  description: 'SQLModel Enhancement Library — Tutorials, How-to, Reference, Explanation',
 
   themeConfig: {
     nav: [
       { text: 'Home', link: '/en/' },
-      { text: 'Guide', link: '/en/guide/' },
-      { text: 'Internals', link: '/en/internals/' },
+      { text: 'Tutorials', link: '/en/tutorials/' },
+      { text: 'How-to', link: '/en/how-to/' },
+      { text: 'Reference', link: '/en/reference/' },
+      { text: 'Explanation', link: '/en/explanation/' },
     ],
 
     sidebar: {
-      '/en/guide/': [
+      '/en/tutorials/': [
         {
-          text: 'Guide',
+          text: 'Tutorials',
           items: [
-            { text: 'Quick Start', link: '/en/guide/' },
-            { text: 'Field Types', link: '/en/guide/field-types' },
-            { text: 'CRUD Operations', link: '/en/guide/crud' },
-            { text: 'Pagination & Lists', link: '/en/guide/pagination' },
-            { text: 'Polymorphic Inheritance', link: '/en/guide/polymorphic' },
-            { text: 'Optimistic Locking', link: '/en/guide/optimistic-lock' },
-            { text: 'Relation Preloading', link: '/en/guide/relation-preload' },
-            { text: 'Redis Caching', link: '/en/guide/cached-table' },
-            { text: 'Static Analyzer', link: '/en/guide/relation-load-checker' },
+            { text: 'Overview', link: '/en/tutorials/' },
+            { text: '01 · Getting started', link: '/en/tutorials/01-getting-started' },
+            { text: '02 · Building a blog API', link: '/en/tutorials/02-building-a-blog-api' },
+            { text: '03 · Adding Redis caching', link: '/en/tutorials/03-adding-redis-cache' },
           ],
         },
       ],
-      '/en/internals/': [
+      '/en/how-to/': [
         {
-          text: 'Implementation Internals',
+          text: 'How-to guides',
           items: [
-            { text: 'Architecture Overview', link: '/en/internals/' },
-            { text: 'Prerequisites', link: '/en/internals/prerequisites' },
-            { text: 'Metaclass & SQLModelBase', link: '/en/internals/metaclass' },
-            { text: 'CRUD Implementation', link: '/en/internals/crud' },
-            { text: 'Polymorphic Inheritance', link: '/en/internals/polymorphic' },
-            { text: 'Optimistic Locking', link: '/en/internals/optimistic-lock' },
-            { text: 'Relation Preloading', link: '/en/internals/relation-preload' },
-            { text: 'Redis Caching', link: '/en/internals/cached-table' },
-            { text: 'Static Analyzer', link: '/en/internals/relation-load-checker' },
+            { text: 'Overview', link: '/en/how-to/' },
+            { text: 'Integrate with FastAPI', link: '/en/how-to/integrate-with-fastapi' },
+            { text: 'Paginate a list endpoint', link: '/en/how-to/paginate-a-list-endpoint' },
+            { text: 'Define JTI models', link: '/en/how-to/define-jti-models' },
+            { text: 'Define STI models', link: '/en/how-to/define-sti-models' },
+            { text: 'Handle concurrent updates', link: '/en/how-to/handle-concurrent-updates' },
+            { text: 'Prevent MissingGreenlet errors', link: '/en/how-to/prevent-missing-greenlet' },
+            { text: 'Cache queries with Redis', link: '/en/how-to/cache-queries' },
+          ],
+        },
+      ],
+      '/en/reference/': [
+        {
+          text: 'Reference',
+          items: [
+            { text: 'Overview', link: '/en/reference/' },
+            { text: 'Base classes', link: '/en/reference/base-classes' },
+            { text: 'CRUD methods', link: '/en/reference/crud-methods' },
+            { text: 'Field types', link: '/en/reference/field-types' },
+            { text: 'Mixins', link: '/en/reference/mixins' },
+            { text: 'Decorators & helpers', link: '/en/reference/decorators' },
+            { text: 'Pagination types', link: '/en/reference/pagination-types' },
+          ],
+        },
+      ],
+      '/en/explanation/': [
+        {
+          text: 'Explanation',
+          items: [
+            { text: 'Overview', link: '/en/explanation/' },
+            { text: 'Prerequisites', link: '/en/explanation/prerequisites' },
+            { text: 'Metaclass & SQLModelBase', link: '/en/explanation/metaclass' },
+            { text: 'CRUD pipeline', link: '/en/explanation/crud-pipeline' },
+            { text: 'Polymorphic internals', link: '/en/explanation/polymorphic-internals' },
+            { text: 'Optimistic locking', link: '/en/explanation/optimistic-lock' },
+            { text: 'Relation preloading', link: '/en/explanation/relation-preload' },
+            { text: 'Redis caching', link: '/en/explanation/cached-table' },
+            { text: 'Static analyzer', link: '/en/explanation/relation-load-checker' },
           ],
         },
       ],
