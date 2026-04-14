@@ -33,6 +33,7 @@ Detection rules:
     - RLC010: passing expired ORM objects as arguments to functions/methods (callee may access expired columns -> MissingGreenlet)
     - RLC011: implicit dunder method triggers relationship access (e.g. ``if not obj:`` triggers __len__() / ``for x in obj:`` triggers __iter__())
     - RLC012: response_model contains STI subclass-specific columns while the endpoint returns STI base-class query results (heterogeneous serialization accesses missing columns -> MissingGreenlet)
+    - RLC013: column access after ``yield`` in an async generator (consumer holds the same session and may commit during the yield, expiring the object)
 
 Opt-in auto-check::
 
@@ -113,7 +114,7 @@ _PROJECT_ROOT: str = os.getcwd()
 class RelationLoadWarning:
     """Relation load static analysis warning."""
     code: str
-    """Rule code (RLC001-RLC012)."""
+    """Rule code (RLC001-RLC013)."""
     file: str
     """File path."""
     line: int
@@ -141,6 +142,11 @@ class _TrackedVar:
     """Whether the object has been through save/update/delete (may be expired)."""
     caller_provided: bool = False
     """Caller-provided param (e.g. self, function params); pre-commit access skips RLC003."""
+    expired_by_yield: bool = False
+    """Whether the object was expired by a ``yield`` that handed control to a consumer
+    (the consumer may commit on the shared session). Set together with ``post_commit``
+    so downstream checks can distinguish RLC007 (commit) from RLC013 (yield) in the
+    error message."""
     line: int = 0
     """Definition/last-update line number."""
 
@@ -2070,6 +2076,13 @@ class _FunctionAnalyzer(ast.NodeVisitor):
         self.model_returning_methods: frozenset[str] = model_returning_methods or frozenset()
         self.noreturn_names: frozenset[str] = noreturn_names or frozenset()
         self.session_param_names: frozenset[str] = session_param_names or frozenset()
+        # RLC013: does the function signature include an externally-provided
+        # AsyncSession parameter? Only when True does an async generator's yield
+        # trigger pessimistic expiration of tracked ORM vars ("the consumer may
+        # commit on the shared session during the yield"). Local sessions created
+        # via ``async with session_factory() as ...`` do not appear in the signature
+        # and are therefore safe.
+        self.has_session_param: bool = bool(self.session_param_names)
         # Complete model-returning set for variable tracking (includes sync methods).
         # Sync methods are NOT added to safe_methods because calling sync methods
         # on expired objects is equally dangerous.
@@ -2682,26 +2695,48 @@ class _FunctionAnalyzer(ast.NodeVisitor):
                     ),
                 ))
         elif var_info.post_commit and attr_name in cols:
-            # RLC007: column access on expired (post-commit) object (including PK).
-            # After commit state.dict is cleared (including PK); accessing any column
-            # triggers _load_expired -> synchronous SELECT -> MissingGreenlet in
-            # async context. The identity map retains the PK for object lookup,
-            # but the attribute descriptor still takes the expired path.
-            # Safe alternative: sa_inspect(obj).identity[0] (no DB query),
-            # or extract values into local variables before commit.
-            # Typical scenario: obj_a.save() then obj_b.column (obj_b not refreshed)
-            self.warnings.append(RelationLoadWarning(
-                code='RLC007',
-                file=self.source_file,
-                line=self._abs_line(node),
-                message=(
-                    f"Accessing column '{var_key}.{attr_name}' on expired object "
-                    f"after commit. The object was not refreshed and access will "
-                    f"trigger synchronous lazy load -> MissingGreenlet. "
-                    f"Suggestion: extract the needed values into local variables "
-                    f"before commit, or refresh with Type.get() after commit"
-                ),
-            ))
+            # RLC007/RLC013: column access on expired object (including PK) either
+            # after commit or after yield.
+            # After commit/yield state.dict is cleared (including PK); accessing
+            # any column triggers _load_expired -> synchronous SELECT ->
+            # MissingGreenlet in async context. The identity map retains the PK
+            # for object lookup, but the attribute descriptor still takes the
+            # expired path.
+            # Typical scenarios:
+            #     - RLC007: obj_a.save() then obj_b.column (obj_b not refreshed)
+            #     - RLC013: async generator yields then accesses obj.column
+            #               (consumer may commit during the yield, expiring the
+            #               object in the shared session)
+            if var_info.expired_by_yield:
+                self.warnings.append(RelationLoadWarning(
+                    code='RLC013',
+                    file=self.source_file,
+                    line=self._abs_line(node),
+                    message=(
+                        f"Accessing column '{var_key}.{attr_name}' after yield "
+                        f"in an async generator. Yield hands control to the "
+                        f"consumer, which holds the same session reference and "
+                        f"may commit during the yield, expiring the object; "
+                        f"access will trigger MissingGreenlet. "
+                        f"Suggestion: extract '{var_key}.{attr_name}' into a "
+                        f"local variable BEFORE the yield (do not use "
+                        f"Type.get() to reload after the yield -- the next "
+                        f"yield will expire it again)"
+                    ),
+                ))
+            else:
+                self.warnings.append(RelationLoadWarning(
+                    code='RLC007',
+                    file=self.source_file,
+                    line=self._abs_line(node),
+                    message=(
+                        f"Accessing column '{var_key}.{attr_name}' on expired object "
+                        f"after commit. The object was not refreshed and access will "
+                        f"trigger synchronous lazy load -> MissingGreenlet. "
+                        f"Suggestion: extract the needed values into local variables "
+                        f"before commit, or refresh with Type.get() after commit"
+                    ),
+                ))
 
         self.generic_visit(node)
 
@@ -3293,6 +3328,61 @@ class _FunctionAnalyzer(ast.NodeVisitor):
             var.post_commit = True
             var.loaded_rels.clear()
 
+    def _expire_all_tracked_vars_for_yield(self) -> None:
+        """
+        Mark all tracked variables as yield-expired (RLC013).
+
+        Pessimistic assumption: after the function yields, control is handed to
+        the consumer, which holds the same session reference and may commit on
+        it during the yield, expiring every object in the session.
+
+        Difference from ``_expire_all_tracked_vars``: also sets
+        ``expired_by_yield=True`` so that ``visit_Attribute`` can distinguish
+        RLC007 (commit-caused) from RLC013 (yield-caused) and emit a more
+        targeted fix suggestion ("extract values before yield" vs.
+        "refresh with Type.get() after commit").
+        """
+        for var in self.tracked_vars.values():
+            var.post_commit = True
+            var.expired_by_yield = True
+            var.loaded_rels.clear()
+
+    @override
+    def visit_Yield(self, node: ast.Yield) -> None:
+        """
+        Detect ``yield`` statements in async generators.
+
+        When the function signature contains an externally-provided AsyncSession
+        parameter, every tracked ORM variable is pessimistically marked as
+        expired after yield (the consumer may commit on the shared session
+        during the yield).
+
+        Automatic exceptions (no special handling needed):
+            - Function does not receive a session parameter -> ``has_session_param``
+              is False, nothing expires.
+            - Variables re-assigned after yield (e.g. ``llm = await LLM.get_one(...)``)
+              -> ``_check_assign`` automatically rebuilds the ``_TrackedVar`` and
+              clears the expiration flag.
+        """
+        # Visit the yielded expression's children in the pre-yield state first,
+        # so that attribute access inside the yield value itself is not
+        # incorrectly flagged as yield-expired.
+        self.generic_visit(node)
+        if self.has_session_param:
+            self._expire_all_tracked_vars_for_yield()
+
+    @override
+    def visit_YieldFrom(self, node: ast.YieldFrom) -> None:
+        """
+        Detect ``yield from`` statements (sync generators).
+
+        Semantics identical to ``visit_Yield``: once control has been handed to
+        the consumer, objects in the shared session may be expired.
+        """
+        self.generic_visit(node)
+        if self.has_session_param:
+            self._expire_all_tracked_vars_for_yield()
+
     # ========================= Branch-aware state management =========================
 
     def _snapshot_tracked_vars(self) -> dict[str, _TrackedVar]:
@@ -3308,6 +3398,7 @@ class _FunctionAnalyzer(ast.NodeVisitor):
                 loaded_rels=var.loaded_rels.copy(),
                 post_commit=var.post_commit,
                 caller_provided=var.caller_provided,
+                expired_by_yield=var.expired_by_yield,
                 line=var.line,
             )
             for name, var in self.tracked_vars.items()
@@ -3352,6 +3443,7 @@ class _FunctionAnalyzer(ast.NodeVisitor):
                 loaded_rels=a.loaded_rels & b.loaded_rels,
                 post_commit=a.post_commit or b.post_commit,
                 caller_provided=a.caller_provided and b.caller_provided,
+                expired_by_yield=a.expired_by_yield or b.expired_by_yield,
                 line=max(a.line, b.line),
             )
         self.tracked_vars.clear()
