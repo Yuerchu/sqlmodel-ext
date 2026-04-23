@@ -14,6 +14,7 @@
 
 - [定义 JTI 联表继承模型](./define-jti-models) — 子类字段差异大时用
 - [定义 STI 单表继承模型](./define-sti-models) — 子类只多 1~2 个字段时用
+- [配置级联删除](./configure-cascade-delete) — `cascade_delete` / `passive_deletes` / `ondelete` 三件套怎么搭
 
 ### 并发与一致性
 

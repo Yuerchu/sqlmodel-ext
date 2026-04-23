@@ -15,6 +15,7 @@
 | [多态继承机制](./polymorphic-internals) | 高级 | JTI 和 STI 在 SQLAlchemy 层面如何实现？两阶段列注册解决了什么问题？ |
 | [乐观锁机制](./optimistic-lock) | 中等 | 自动重试如何把"丢失更新"问题转成可重试的冲突？ |
 | [关系预加载机制](./relation-preload) | 中等 | `@requires_relations` 如何在不改调用方代码的前提下声明依赖？ |
+| [级联删除语义](./cascade-delete-semantics) | 中等 | `cascade_delete` × `passive_deletes` × `ondelete` 的 18 种组合究竟会发生什么？`raise_on_sql` 为什么（通常）不在级联期间触发？ |
 | [Redis 缓存机制](./cached-table) | 高级 | 双层缓存（ID + 查询）如何配合自动失效？为什么要 `_cached_ancestors`？ |
 | [静态分析器原理](./relation-load-checker) | 高级 | AST 如何在启动时找出潜在的 MissingGreenlet 问题？ |
 

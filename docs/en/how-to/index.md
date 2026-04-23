@@ -14,6 +14,7 @@
 
 - [Define JTI (joined table inheritance) models](./define-jti-models) — Use when subclasses have many distinct fields
 - [Define STI (single table inheritance) models](./define-sti-models) — Use when subclasses add only 1–2 extra fields
+- [Configure cascade delete](./configure-cascade-delete) — How to combine `cascade_delete` / `passive_deletes` / `ondelete`
 
 ### Concurrency & consistency
 

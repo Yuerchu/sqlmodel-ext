@@ -15,6 +15,7 @@ Explanation pieces have **no mandatory order** — pick whatever piques your cur
 | [Polymorphic inheritance internals](./polymorphic-internals) | Advanced | How are JTI and STI implemented at the SQLAlchemy level? What does the two-phase column registration solve? |
 | [Optimistic lock mechanism](./optimistic-lock) | Intermediate | How does automatic retry turn "lost update" into a recoverable conflict? |
 | [Relation preloading mechanism](./relation-preload) | Intermediate | How does `@requires_relations` declare dependencies without changing call sites? |
+| [Cascade delete semantics](./cascade-delete-semantics) | Intermediate | What actually happens in the 18 combinations of `cascade_delete` × `passive_deletes` × `ondelete`? Why doesn't `raise_on_sql` (usually) fire during cascade? |
 | [Redis cache mechanism](./cached-table) | Advanced | How does the dual-layer cache (ID + query) coordinate with automatic invalidation? Why `_cached_ancestors`? |
 | [Static analyzer internals](./relation-load-checker) | Advanced | How does the AST find potential MissingGreenlet problems at startup? |
 
