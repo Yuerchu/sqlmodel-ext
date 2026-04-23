@@ -36,6 +36,7 @@ export const zh = {
             { text: '定义 STI 单表继承模型', link: '/how-to/define-sti-models' },
             { text: '处理并发更新', link: '/how-to/handle-concurrent-updates' },
             { text: '防止 MissingGreenlet 错误', link: '/how-to/prevent-missing-greenlet' },
+            { text: '长 I/O 期间释放数据库连接', link: '/how-to/release-connection-during-long-io' },
             { text: '配置级联删除', link: '/how-to/configure-cascade-delete' },
             { text: '给查询加 Redis 缓存', link: '/how-to/cache-queries' },
           ],

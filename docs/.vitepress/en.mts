@@ -36,6 +36,7 @@ export const en = {
             { text: 'Define STI models', link: '/en/how-to/define-sti-models' },
             { text: 'Handle concurrent updates', link: '/en/how-to/handle-concurrent-updates' },
             { text: 'Prevent MissingGreenlet errors', link: '/en/how-to/prevent-missing-greenlet' },
+            { text: 'Release the DB connection during long I/O', link: '/en/how-to/release-connection-during-long-io' },
             { text: 'Configure cascade delete', link: '/en/how-to/configure-cascade-delete' },
             { text: 'Cache queries with Redis', link: '/en/how-to/cache-queries' },
           ],

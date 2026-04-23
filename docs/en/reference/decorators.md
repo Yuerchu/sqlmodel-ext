@@ -127,6 +127,16 @@ async def safe_reset(session: AsyncSession) -> None
 
 **Purpose**: clears the FOR UPDATE lock tracking set in `session.info[SESSION_FOR_UPDATE_KEY]` before calling `session.reset()`. Safer than calling `session.reset()` directly — prevents the lock-tracking set from leaking into the next session reuse cycle.
 
+**Typical use case**: an HTTP endpoint / Taskiq task needs to do long external I/O mid-flight (S3, ffprobe, third-party HTTP polling, etc.). Call `safe_reset` first to release the DB connection, so the connection isn't blocked on network I/O and the pool isn't exhausted. See [Release the DB connection during long I/O](/en/how-to/release-connection-during-long-io).
+
+**Object state after the call**:
+
+- All ORM objects enter the **detached** state (`sa_inspect(obj).detached == True`)
+- But **already-loaded scalar fields are NOT expired** — they remain in `obj.__dict__`, so reading them is safe (no SQL, no `MissingGreenlet`)
+- Accessing un-preloaded relation fields raises `InvalidRequestError` (lazy load fails on detached objects)
+- Writes (save / update / delete) will fail — re-query a fresh attached instance via `Model.get()` first
+- Any subsequent `await Model.get/save` that issues SQL will transparently check out a new connection from the pool
+
 ## `sanitize_integrity_error()`
 
 ```python

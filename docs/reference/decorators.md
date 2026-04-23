@@ -127,6 +127,16 @@ async def safe_reset(session: AsyncSession) -> None
 
 **用途**：清理 `session.info[SESSION_FOR_UPDATE_KEY]` 中跟踪的 FOR UPDATE 锁后调用 `session.reset()`。比直接 `session.reset()` 更安全——避免锁跟踪集合泄漏到下一次 session 复用周期。
 
+**典型场景**：HTTP 端点 / Taskiq 任务在中途需要做长时间外部 I/O（S3、ffprobe、第三方 HTTP 轮询等），调用前先 `safe_reset` 释放 DB 连接，避免连接被外部网络阻塞拖死池。详见 [长 I/O 期间释放数据库连接](/how-to/release-connection-during-long-io)。
+
+**调用后对象状态**：
+
+- 所有 ORM 对象进入 **detached** 状态（`sa_inspect(obj).detached == True`）
+- 但**已加载的 scalar 字段不会被 expire** —— 仍在 `obj.__dict__` 中，访问安全（不触发 SQL，不抛 `MissingGreenlet`）
+- 未预加载的关系字段访问会抛 `InvalidRequestError`（lazy load 在 detached 上失败）
+- 写操作（save / update / delete）会失败 —— 需要先用 `Model.get()` 重查拿 attached 实例
+- 后续任何 `await Model.get/save` 触发 SQL 时会自动从池 checkout 新连接
+
 ## `sanitize_integrity_error()`
 
 ```python
