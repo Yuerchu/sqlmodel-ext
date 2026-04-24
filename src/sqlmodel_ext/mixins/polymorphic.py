@@ -453,6 +453,22 @@ class AutoPolymorphicIdentityMixin:
                 # other subclasses' rows won't have values for these columns.
                 # Pydantic-level constraints still apply when creating specific subclasses.
                 column.nullable = True
+
+                # Clear Python-side and server-side defaults on the shared column.
+                # Otherwise, a Pydantic field default (e.g. ``some_field: int = 5``)
+                # gets propagated into Column.default by ``get_column_from_field()``.
+                # When sibling subclasses that do NOT declare this field are inserted,
+                # the attribute is absent from their model_fields and from the
+                # instance's ``__dict__``; the ORM falls back to Column.default and
+                # writes the declaring subclass's default into the sibling row,
+                # silently polluting unrelated rows across the STI table.
+                # The declaring subclass itself is unaffected: Pydantic populates the
+                # instance attribute at ``__init__`` time, and the ORM reads the
+                # value directly from the instance on flush without ever consulting
+                # Column.default.
+                column.default = None
+                column.server_default = None
+
                 parent_table.append_column(column)
             except Exception as e:
                 logger.warning(f"Failed to create column {field_name} for {cls.__name__}: {e}")
