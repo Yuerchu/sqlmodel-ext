@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # -------------------------------------------------------------------
+  # Job 1: source-tree tests across supported Python versions.
+  # Uses uv sync so the lockfile is honoured and runs are reproducible.
+  # -------------------------------------------------------------------
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Create venv and install project with dev extras
+        # Dev extras: pytest, pytest-asyncio, aiosqlite, ruff. Editable install
+        # keeps the wheel build separate for the consumer-integration job.
+        run: |
+          uv venv --python ${{ matrix.python-version }} .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+
+      - name: Run pytest
+        run: .venv/bin/python -m pytest tests/ -v
+
+  # -------------------------------------------------------------------
+  # Job 2: build wheel + sdist, then install the wheel into a clean
+  # virtualenv with zero dev deps and run the consumer integration
+  # script. This simulates an external PyPI consumer.
+  # -------------------------------------------------------------------
+  consumer-integration:
+    name: consumer integration (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Build wheel and sdist
+        run: uv tool run --from build python -m build
+
+      - name: Create isolated consumer venv
+        run: uv venv --python ${{ matrix.python-version }} /tmp/consumer-env
+
+      - name: Install built wheel (no dev deps, only the wheel + aiosqlite driver)
+        run: uv pip install --python /tmp/consumer-env/bin/python dist/*.whl aiosqlite
+
+      - name: Confirm installed version matches wheel
+        run: |
+          /tmp/consumer-env/bin/python -c "import sqlmodel_ext; print('installed:', sqlmodel_ext.__version__ if hasattr(sqlmodel_ext, '__version__') else '(no __version__)')"
+
+      - name: Run consumer integration scenario
+        run: /tmp/consumer-env/bin/python examples/consumer_integration/run.py
+
+      - name: Upload distribution artifacts
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
